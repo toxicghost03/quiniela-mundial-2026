@@ -201,7 +201,8 @@ with tab_picks:
                     else:
                         st.caption("_Sin pick — pídele al admin_")
                 else:
-                    options = [t1, t2]
+                    is_group = stage in ["Jornada 1", "Jornada 2", "Jornada 3"]
+                    options  = [t1, "Empate", t2] if is_group else [t1, t2]
                     cur = picks[i] if picks[i] in options else None
                     st.markdown(f"**🕐 {t1} vs {t2}**")
                     sel = st.radio(f"p{i}", options, index=options.index(cur) if cur else None,
@@ -313,15 +314,12 @@ with tab_admin:
                             if stg != stage: continue
                             t1, t2, result, pts = m
                             st.markdown(f"**{t1} vs {t2}**" + (f" · Ganó: **{result}**" if result else " · pendiente"))
-                            opts    = ["— Sin pick —", t1, t2]
-                            if result and result not in [t1, t2]:
-                                opts = ["— Sin pick —", t1, t2, "Empate"]
-                            elif result == "Empate":
-                                opts = ["— Sin pick —", t1, t2, "Empate"]
+                            is_grp  = stage in ["Jornada 1", "Jornada 2", "Jornada 3"]
+                            opts    = ["— Sin pick —", t1, "Empate", t2] if is_grp else ["— Sin pick —", t1, t2]
                             cur_idx = 0
                             if edited[i] == t1: cur_idx = 1
-                            elif edited[i] == t2: cur_idx = 2
-                            elif edited[i] == "Empate": cur_idx = 3
+                            elif edited[i] == "Empate" and is_grp: cur_idx = 2
+                            elif edited[i] == t2: cur_idx = 3 if is_grp else 2
                             sel = st.radio(f"up{i}", opts, index=cur_idx,
                                            key=f"adm_up_{sel_user}_{i}",
                                            horizontal=True, label_visibility="collapsed")
