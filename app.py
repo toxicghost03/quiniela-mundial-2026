@@ -304,6 +304,21 @@ with tab_admin:
         with admin_tab2:
             st.caption("Selecciona un usuario y asígnale retroactivamente sus picks de la Ronda de 32.")
 
+            # ── Crear usuario nuevo ───────────────────────────────────
+            with st.expander("➕ Agregar usuario nuevo"):
+                new_name = st.text_input("Nombre del usuario", max_chars=30, key="admin_new_user")
+                if st.button("Crear usuario", key="admin_create_user"):
+                    if not new_name.strip():
+                        st.error("Escribe un nombre")
+                    elif new_name.strip() in st.session_state.all_users:
+                        st.warning(f"{new_name.strip()} ya existe.")
+                    else:
+                        st.session_state.all_users[new_name.strip()] = {"picks": [None]*TOTAL, "points": 0}
+                        st.success(f"✅ Usuario **{new_name.strip()}** creado. Ahora puedes asignarle picks abajo.")
+                        st.rerun()
+
+            st.markdown("---")
+
             user_list = list(st.session_state.all_users.keys())
             if not user_list:
                 st.info("No hay usuarios registrados aún.")
