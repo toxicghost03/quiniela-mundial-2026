@@ -18,7 +18,7 @@ div[data-testid="stMetric"] { background: #1a1a24; border: 1px solid #2e2e3e; bo
 </style>
 """, unsafe_allow_html=True)
 
-ADMIN_PASSWORD = "mundial2026"
+ADMIN_PASSWORD = "admin2026"
 
 # ══ ALL MATCHES ════════════════════════════════════════════════════════
 # (team1, team2, label, result_or_None, points)
