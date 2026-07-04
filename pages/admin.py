@@ -1,89 +1,72 @@
 import streamlit as st
-from data import GROUPS, KNOCKOUT_ROUNDS, SCORING, ADMIN_PASSWORD
+from data import ADMIN_PASSWORD
 
-st.set_page_config(page_title="Admin — Quiniela 2026", page_icon="⚙️", layout="wide")
+st.set_page_config(page_title="Admin — Quiniela 2026", page_icon="⚙️", layout="centered")
+
+R16_MATCHES = [
+    ("Estados Unidos 🇺🇸",   "México 🇲🇽"),
+    ("España 🇪🇸",           "Marruecos 🇲🇦"),
+    ("Francia 🇫🇷",          "Brasil 🇧🇷"),
+    ("Argentina 🇦🇷",        "Portugal 🇵🇹"),
+    ("Inglaterra 🏴󠁧󠁢󠁥󠁮󠁧󠁿",       "Países Bajos 🇳🇱"),
+    ("Alemania 🇩🇪",         "Colombia 🇨🇴"),
+    ("Japón 🇯🇵",            "Croacia 🇭🇷"),
+    ("Italia 🇮🇹",           "Suiza 🇨🇭"),
+]
 
 if "admin_ok" not in st.session_state:
     st.session_state.admin_ok = False
 if "all_users" not in st.session_state:
     st.session_state.all_users = {}
 if "real_results" not in st.session_state:
-    st.session_state.real_results = {"groups": {}, "knockout": {}}
+    st.session_state.real_results = [None] * len(R16_MATCHES)
 
 if not st.session_state.admin_ok:
-    st.title("⚙️ Admin — Quiniela 2026")
-    pw = st.text_input("Contraseña de admin", type="password")
+    st.title("⚙️ Admin")
+    pw = st.text_input("Contraseña", type="password")
     if st.button("Entrar"):
         if pw == ADMIN_PASSWORD:
             st.session_state.admin_ok = True
             st.rerun()
         else:
-            st.error("Contraseña incorrecta")
+            st.error("Incorrecta")
     st.stop()
 
-st.title("⚙️ Panel de Admin — Quiniela 2026")
-tab_gres, tab_kres, tab_calc = st.tabs(["📋 Resultados Grupos", "🏆 Resultados Eliminatorias", "🔄 Recalcular"])
+st.title("⚙️ Admin — Quiniela 2026")
+st.subheader("Resultados Reales — Ronda de 16")
+st.caption("Selecciona el ganador real de cada partido para calcular los puntos.")
 
-with tab_gres:
-    st.subheader("Resultados — Fase de Grupos")
-    group_results = {}
-    cols = st.columns(3)
-    for i, (letter, group) in enumerate(GROUPS.items()):
-        opts = [""] + [t["name"] for t in group["teams"]]
-        saved = st.session_state.real_results.get("groups", {}).get(letter, {})
-        with cols[i % 3]:
-            st.markdown(f"**Grupo {letter}**")
-            f = st.selectbox(f"1° {letter}", opts, index=opts.index(saved.get("first","")) if saved.get("first") in opts else 0, key=f"gr_{letter}_1", label_visibility="collapsed")
-            s = st.selectbox(f"2° {letter}", opts, index=opts.index(saved.get("second","")) if saved.get("second") in opts else 0, key=f"gr_{letter}_2", label_visibility="collapsed")
-            group_results[letter] = {"first": f or None, "second": s or None}
-            st.markdown("---")
-    if st.button("💾 Guardar Grupos", type="primary"):
-        st.session_state.real_results["groups"] = group_results
-        st.success("✅ Guardado")
+results = list(st.session_state.real_results)
+for i, (t1, t2) in enumerate(R16_MATCHES):
+    st.markdown(f"**Partido {i+1}**")
+    opts = [t1, t2]
+    cur = results[i] if results[i] in opts else None
+    sel = st.radio(f"R{i+1}", opts, index=opts.index(cur) if cur else None, key=f"res_{i}", horizontal=True, label_visibility="collapsed")
+    results[i] = sel
+    st.divider()
 
-with tab_kres:
-    st.subheader("Resultados — Eliminatorias")
-    ko_results = {}
-    for r in KNOCKOUT_ROUNDS:
-        rid, rname, slots = r["id"], r["name"], r["slots"]
-        mc = slots // 2
-        st.markdown(f"**{rname}**")
-        saved_ko = st.session_state.real_results.get("knockout", {}).get(rid, [""]*mc)
-        cols = st.columns(min(mc, 4))
-        winners = []
-        for i in range(mc):
-            with cols[i % len(cols)]:
-                v = saved_ko[i] if i < len(saved_ko) else ""
-                w = st.text_input(f"Ganador {i+1}", value=v or "", key=f"ko_{rid}_{i}", placeholder="Equipo ganador")
-                winners.append(w or None)
-        ko_results[rid] = winners
-        st.markdown("---")
-    if st.button("💾 Guardar Eliminatorias", type="primary"):
-        st.session_state.real_results["knockout"] = ko_results
-        st.success("✅ Guardado")
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("💾 Guardar resultados", type="primary", use_container_width=True):
+        st.session_state.real_results = results
+        st.success("✅ Resultados guardados")
 
-with tab_calc:
-    st.subheader("Recalcular Puntos")
-    if st.button("🔄 Recalcular ahora", type="primary", use_container_width=True):
+with col2:
+    if st.button("🔄 Recalcular puntos", use_container_width=True):
         real = st.session_state.real_results
         log = []
         for uid, u in st.session_state.all_users.items():
-            pts = 0
-            for letter, res in real.get("groups", {}).items():
-                pick = u.get("groupPicks", {}).get(letter, {})
-                if res.get("first") and pick.get("first") == res["first"]: pts += SCORING["group_winner"]
-                if res.get("second") and pick.get("second") == res["second"]: pts += SCORING["group_runner"]
-            for r in KNOCKOUT_ROUNDS:
-                rid = r["id"]
-                rw = real.get("knockout", {}).get(rid, [])
-                uw = u.get("knockoutPicks", {}).get(rid, [])
-                if rid == "final":
-                    if rw and uw and len(uw) > 0 and uw[0] == rw[0]: pts += SCORING["final_winner"]
-                    if rw and len(rw) > 1 and uw and len(uw) > 1 and uw[1] == rw[1]: pts += SCORING["final_runner"]
-                else:
-                    for i, w in enumerate(rw):
-                        if w and i < len(uw) and uw[i] == w: pts += SCORING.get(rid, 0)
+            pts = sum(5 for i, w in enumerate(real) if w and i < len(u.get("picks",[])) and u["picks"][i] == w)
             st.session_state.all_users[uid]["points"] = pts
-            log.append(f"✅ {u['name']}: {pts} pts")
-        st.success(f"Recálculo completo — {len(log)} participantes")
-        st.code("\n".join(log) if log else "No hay participantes aún.", language=None)
+            log.append(f"✅ {uid}: {pts} pts")
+        st.success("Puntos actualizados")
+        if log:
+            st.code("\n".join(log))
+
+st.markdown("---")
+st.subheader("Participantes registrados")
+if st.session_state.all_users:
+    for uid, u in st.session_state.all_users.items():
+        st.write(f"**{uid}** — {sum(1 for p in u.get('picks',[]) if p)}/8 picks — {u.get('points',0)} pts")
+else:
+    st.info("Nadie registrado aún.")
