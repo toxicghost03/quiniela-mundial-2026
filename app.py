@@ -171,11 +171,9 @@ with tab_lb:
     else:
         medals = {0: "🥇", 1: "🥈", 2: "🥉"}
         top3   = users[:min(3, len(users))]
-        order  = [1, 0, 2][:len(top3)]
         cols   = st.columns(len(top3))
-        for col_i, pos in enumerate(order):
-            uid, u = top3[pos]
-            with cols[col_i]:
+        for pos, (uid, u) in enumerate(top3):
+            with cols[pos]:
                 st.metric(
                     label=f"{medals[pos]} {uid}",
                     value=f"{u.get('points', 0)} pts",
