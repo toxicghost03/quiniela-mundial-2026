@@ -420,14 +420,14 @@
         null,
         null,
         null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
+        "🇲🇦 Marruecos",
+        "🇵🇾 Paraguay",
+        "🇧🇷 Brasil",
+        "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra",
+        "🇪🇸 España",
+        "🇺🇸 USA",
+        "🇦🇷 Argentina",
+        "🇨🇴 Colombia",
         null,
         null,
         null,
@@ -437,8 +437,8 @@
         null,
         null
       ],
-      "points": 0,
-      "submitted": false
+      "points": 5,
+      "submitted": true
     }
   },
   "results": {
