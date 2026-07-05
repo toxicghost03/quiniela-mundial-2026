@@ -373,7 +373,9 @@ with tab_picks:
 # ══ TAB BRACKET ═══════════════════════════════════════════════════════════
 with tab_bracket:
     st.subheader("🏆 Bracket del Mundial 2026")
-    st.caption("Desde la Fase de Grupos hasta la Final — actualizado en tiempo real.")
+
+    view = st.radio("Ver:", ["🏆 Bracket Eliminatorio", "📋 Fase de Grupos"], horizontal=True, label_visibility="collapsed")
+    st.markdown("---")
 
     def get_r(stage, sidx):
         key = f"{stage}_{sidx}"
@@ -382,75 +384,217 @@ with tab_bracket:
         known = KNOWN_RESULTS.get(stage, [])
         return known[sidx] if sidx < len(known) else None
 
-    def mcard(t1, t2, result, date, w="180px"):
-        tbd = t1 == "⏳ TBD"
-        if tbd:
-            return f'''<div style="width:{w};border:1px solid #2e2e3e;border-radius:8px;overflow:hidden;font-size:11px;flex-shrink:0;">
-              <div style="background:#0d0d0d;padding:3px 8px;color:#555;font-size:10px;">{date}</div>
-              <div style="padding:6px 8px;color:#555;">⏳ Por definir</div>
-              <div style="border-top:1px solid #2e2e3e;padding:6px 8px;color:#555;">⏳ Por definir</div>
-            </div>'''
-        w1 = result == t1 if result else False
-        w2 = result == t2 if result else False
-        s1 = "color:#00d97e;font-weight:700;" if w1 else ("color:#444;" if result else "color:#ccc;")
-        s2 = "color:#00d97e;font-weight:700;" if w2 else ("color:#444;" if result else "color:#ccc;")
-        bg1 = "background:#071a07;" if w1 else ""
-        bg2 = "background:#071a07;" if w2 else ""
-        return f'''<div style="width:{w};border:1px solid #2e2e3e;border-radius:8px;overflow:hidden;font-size:11px;flex-shrink:0;">
-          <div style="background:#0d0d0d;padding:3px 8px;color:#555;font-size:10px;">{date}</div>
-          <div style="{bg1}padding:6px 8px;{s1}">{t1}</div>
-          <div style="border-top:1px solid #2e2e3e;{bg2}padding:6px 8px;{s2}">{t2}</div>
-        </div>'''
+    if view == "🏆 Bracket Eliminatorio":
 
-    def stage_col(title, matches_list, results_list, card_w="180px", gap="10px"):
+        def tm(team, result):
+            if not team or team == "⏳ TBD":
+                return "⏳ TBD", False
+            won = (result == team) if result else False
+            return team, won
+
+        def match_html(t1, t2, result, date, mid):
+            _, w1 = tm(t1, result)
+            _, w2 = tm(t2, result)
+            tbd = t1 == "⏳ TBD"
+            c1 = "#00d97e" if w1 else ("#555" if (result and not w1) else "#ddd")
+            c2 = "#00d97e" if w2 else ("#555" if (result and not w2) else "#ddd")
+            fw1 = "700" if w1 else "400"
+            fw2 = "700" if w2 else "400"
+            bg1 = "background:#071a07;" if w1 else ""
+            bg2 = "background:#071a07;" if w2 else ""
+            tn1 = t1 if not tbd else "⏳ TBD"
+            tn2 = t2 if not tbd else "⏳ TBD"
+            return f"""<div id="m{mid}" style="position:absolute;width:160px;border:1px solid #2e2e3e;border-radius:8px;overflow:hidden;font-size:11px;background:#111;">
+              <div style="background:#0a0a0a;padding:2px 7px;color:#555;font-size:9px;border-bottom:1px solid #1a1a1a;">{date}</div>
+              <div style="{bg1}padding:5px 7px;color:{c1};font-weight:{fw1};">{tn1}</div>
+              <div style="border-top:1px solid #1a1a1a;{bg2}padding:5px 7px;color:{c2};font-weight:{fw2};">{tn2}</div>
+            </div>"""
+
+        # Layout constants
+        CW = 160   # card width
+        CH = 58    # card height (date bar + 2 teams)
+        GAP = 12   # horizontal gap between columns
+        COL_W = CW + GAP
+
+        # Column x positions (8 cols: R16-left x4, QF-left x2, SF-left x1, Final, SF-right x1, QF-right x2, R16-right x4)
+        # Total width = 9 columns * COL_W - GAP = 9*172 - 12 = 1536
+        # Cols: 0=R16L, 1=QFL, 2=SFL, 3=FIN, 4=SFR, 5=QFR, 6=R16R  (7 cols)
+        # x positions:
+        x0 = 0              # R16 left col 1
+        x1 = x0+COL_W      # QF left
+        x2 = x1+COL_W      # SF left
+        x3 = x2+COL_W      # Final + 3rd
+        x4 = x3+COL_W      # SF right
+        x5 = x4+COL_W      # QF right
+        x6 = x5+COL_W      # R16 right
+
+        TOTAL_W = x6 + CW
+
+        # R16 matches: left side 0-3, right side 4-7
+        # Each R16 pair feeds into 1 QF
+        # QF pair feeds into 1 SF
+        # 2 SFs feed Final
+
+        r16m  = MATCHES_DEF["Ronda de 16"]
+        qfm   = MATCHES_DEF["Cuartos de Final"]
+        sfm   = MATCHES_DEF["Semifinales"]
+        tpm   = MATCHES_DEF["Tercer Lugar"]
+        finm  = MATCHES_DEF["Final"]
+        r16r  = [get_r("Ronda de 16", i)    for i in range(8)]
+        qfr   = [get_r("Cuartos de Final",i) for i in range(4)]
+        sfr   = [get_r("Semifinales", i)    for i in range(2)]
+        tpr   = get_r("Tercer Lugar", 0)
+        finr  = get_r("Final", 0)
+
+        # Y positions for R16 left (4 matches, evenly spaced)
+        # total height ~600
+        TOTAL_H = 660
+        r16_ys_L = [20, 120+20, 260+20, 380+20]   # top y of each R16 card left
+        r16_ys_R = [20, 120+20, 260+20, 380+20]   # mirror right
+
+        # QF: each QF card is centered between its 2 R16 feeders
+        def mid_y(y1, y2): return (y1 + CH/2 + y2 + CH/2) / 2 - CH/2
+
+        qf_ys_L = [mid_y(r16_ys_L[0], r16_ys_L[1]), mid_y(r16_ys_L[2], r16_ys_L[3])]
+        qf_ys_R = [mid_y(r16_ys_R[0], r16_ys_R[1]), mid_y(r16_ys_R[2], r16_ys_R[3])]
+
+        sf_y_L = mid_y(qf_ys_L[0], qf_ys_L[1])
+        sf_y_R = mid_y(qf_ys_R[0], qf_ys_R[1])
+
+        fin_y  = mid_y(sf_y_L, sf_y_R)
+        tp_y   = fin_y + CH + 20
+
+        # Build cards HTML
         cards = ""
-        for i,(t1,t2,date,_) in enumerate(matches_list):
-            r = results_list[i] if i < len(results_list) else None
-            cards += mcard(t1,t2,r,date,card_w)
-        return f'''<div style="display:flex;flex-direction:column;gap:{gap};flex-shrink:0;">
-          <div style="font-size:10px;font-weight:700;color:#F5C518;letter-spacing:1px;text-align:center;padding-bottom:4px;border-bottom:1px solid #2e2e3e;margin-bottom:4px;">{title}</div>
-          {cards}
-        </div>'''
+        # R16 left
+        for i in range(4):
+            t1,t2,date,_ = r16m[i]
+            cards += match_html(t1,t2,r16r[i],date, f"r16L{i}")
+            cards = cards.replace(f'id="mm', f'style="left:{x0}px;top:{r16_ys_L[i]}px;" id="mm', 1) if False else cards
+            # inject position via replace trick — just build directly
+        cards = ""
+        def placed(t1,t2,res,date,mid,lx,ly):
+            _, w1 = tm(t1, res)
+            _, w2 = tm(t2, res)
+            tbd = t1 == "⏳ TBD"
+            c1 = "#00d97e" if w1 else ("#555" if (res and not w1) else "#e0e0e0")
+            c2 = "#00d97e" if w2 else ("#555" if (res and not w2) else "#e0e0e0")
+            fw1 = "700" if w1 else "400"
+            fw2 = "700" if w2 else "400"
+            bg1 = "background:#071a07;" if w1 else ""
+            bg2 = "background:#071a07;" if w2 else ""
+            tn1 = t1 if not tbd else "⏳ TBD"
+            tn2 = t2 if not tbd else "⏳ TBD"
+            return f'<div id="{mid}" style="position:absolute;left:{lx}px;top:{round(ly)}px;width:{CW}px;border:1px solid #2e2e3e;border-radius:8px;overflow:hidden;font-size:11px;background:#111;"><div style="background:#0a0a0a;padding:2px 7px;color:#555;font-size:9px;">{date}</div><div style="{bg1}padding:5px 7px;color:{c1};font-weight:{fw1};">{tn1}</div><div style="border-top:1px solid #1a1a1a;{bg2}padding:5px 7px;color:{c2};font-weight:{fw2};">{tn2}</div></div>'
 
-    # Collect results
-    def get_results(stage, n):
-        return [get_r(stage, i) for i in range(n)]
+        for i in range(4):
+            t1,t2,date,_ = r16m[i]
+            cards += placed(t1,t2,r16r[i],date,f"r16L{i}",x0,r16_ys_L[i])
+        for i in range(4):
+            t1,t2,date,_ = r16m[i+4]
+            cards += placed(t1,t2,r16r[i+4],date,f"r16R{i}",x6,r16_ys_R[i])
+        for i in range(2):
+            t1,t2,date,_ = qfm[i]
+            cards += placed(t1,t2,qfr[i],date,f"qfL{i}",x1,qf_ys_L[i])
+        for i in range(2):
+            t1,t2,date,_ = qfm[i+2]
+            cards += placed(t1,t2,qfr[i+2],date,f"qfR{i}",x5,qf_ys_R[i])
+        t1,t2,date,_ = sfm[0]
+        cards += placed(t1,t2,sfr[0],date,"sfL",x2,sf_y_L)
+        t1,t2,date,_ = sfm[1]
+        cards += placed(t1,t2,sfr[1],date,"sfR",x4,sf_y_R)
+        t1,t2,date,_ = finm[0]
+        cards += placed(t1,t2,finr,date,"fin",x3,fin_y)
+        t1,t2,date,_ = tpm[0]
+        cards += placed(t1,t2,tpr,date,"tp",x3,tp_y)
 
-    j1  = stage_col("JORNADA 1",       MATCHES_DEF["Jornada 1"],       get_results("Jornada 1", len(MATCHES_DEF["Jornada 1"])),       "175px", "4px")
-    j2  = stage_col("JORNADA 2",       MATCHES_DEF["Jornada 2"],       get_results("Jornada 2", len(MATCHES_DEF["Jornada 2"])),       "175px", "4px")
-    j3  = stage_col("JORNADA 3",       MATCHES_DEF["Jornada 3"],       get_results("Jornada 3", len(MATCHES_DEF["Jornada 3"])),       "175px", "4px")
-    r32 = stage_col("RONDA DE 32",     MATCHES_DEF["Ronda de 32"],     get_results("Ronda de 32", len(MATCHES_DEF["Ronda de 32"])),   "175px", "6px")
-    r16 = stage_col("RONDA DE 16",     MATCHES_DEF["Ronda de 16"],     get_results("Ronda de 16", len(MATCHES_DEF["Ronda de 16"])),   "175px", "8px")
-    qf  = stage_col("CUARTOS",         MATCHES_DEF["Cuartos de Final"],get_results("Cuartos de Final",len(MATCHES_DEF["Cuartos de Final"])),"175px","14px")
-    sf  = stage_col("SEMIFINALES",     MATCHES_DEF["Semifinales"],     get_results("Semifinales", len(MATCHES_DEF["Semifinales"])),   "175px", "30px")
-    fin = stage_col("🏆 FINAL",         MATCHES_DEF["Final"],           get_results("Final", len(MATCHES_DEF["Final"])),               "175px", "8px")
-    tp  = stage_col("3ER LUGAR",        MATCHES_DEF["Tercer Lugar"],    get_results("Tercer Lugar", len(MATCHES_DEF["Tercer Lugar"])), "175px", "8px")
+        # SVG connecting lines
+        def hline(x1c,y1c,x2c,y2c):
+            return f'<line x1="{round(x1c)}" y1="{round(y1c)}" x2="{round(x2c)}" y2="{round(y2c)}" stroke="#2e2e3e" stroke-width="1.5" fill="none"/>'
 
-    bracket_html = f"""
-    <div style="overflow-x:auto;padding:12px 0 20px;">
-      <div style="display:flex;flex-direction:row;gap:14px;align-items:flex-start;width:max-content;">
-        {j1}
-        <div style="display:flex;align-items:center;align-self:stretch;color:#2e2e3e;font-size:20px;padding-top:30px;">→</div>
-        {j2}
-        <div style="display:flex;align-items:center;align-self:stretch;color:#2e2e3e;font-size:20px;padding-top:30px;">→</div>
-        {j3}
-        <div style="display:flex;align-items:center;align-self:stretch;color:#2e2e3e;font-size:20px;padding-top:30px;">→</div>
-        {r32}
-        <div style="display:flex;align-items:center;align-self:stretch;color:#2e2e3e;font-size:20px;padding-top:30px;">→</div>
-        {r16}
-        <div style="display:flex;align-items:center;align-self:stretch;color:#2e2e3e;font-size:20px;padding-top:30px;">→</div>
-        {qf}
-        <div style="display:flex;align-items:center;align-self:stretch;color:#2e2e3e;font-size:20px;padding-top:30px;">→</div>
-        {sf}
-        <div style="display:flex;align-items:center;align-self:stretch;color:#2e2e3e;font-size:20px;padding-top:30px;">→</div>
-        <div style="display:flex;flex-direction:column;gap:12px;">
-          {fin}
-          <div style="margin-top:8px;">{tp}</div>
+        def connector(lx, ly, rx, ry):
+            # left card right edge → bracket line → right card left edge
+            lmid = ly + CH/2
+            rmid = ry + CH/2
+            mx = (lx + CW + rx) / 2
+            lines = ""
+            lines += f'<line x1="{round(lx+CW)}" y1="{round(lmid)}" x2="{round(mx)}" y2="{round(lmid)}" stroke="#3a3a3a" stroke-width="1.5"/>'
+            lines += f'<line x1="{round(mx)}" y1="{round(lmid)}" x2="{round(mx)}" y2="{round(rmid)}" stroke="#3a3a3a" stroke-width="1.5"/>'
+            lines += f'<line x1="{round(mx)}" y1="{round(rmid)}" x2="{round(rx)}" y2="{round(rmid)}" stroke="#3a3a3a" stroke-width="1.5"/>'
+            return lines
+
+        # Right-side connectors mirror: card left edge → bracket → next card right edge
+        def connector_R(lx, ly, rx, ry):
+            lmid = ly + CH/2
+            rmid = ry + CH/2
+            mx = (lx + rx + CW) / 2
+            lines = ""
+            lines += f'<line x1="{round(lx)}" y1="{round(lmid)}" x2="{round(mx)}" y2="{round(lmid)}" stroke="#3a3a3a" stroke-width="1.5"/>'
+            lines += f'<line x1="{round(mx)}" y1="{round(lmid)}" x2="{round(mx)}" y2="{round(rmid)}" stroke="#3a3a3a" stroke-width="1.5"/>'
+            lines += f'<line x1="{round(mx)}" y1="{round(rmid)}" x2="{round(rx+CW)}" y2="{round(rmid)}" stroke="#3a3a3a" stroke-width="1.5"/>'
+            return lines
+
+        svglines = ""
+        # R16L → QFL
+        svglines += connector(x0, r16_ys_L[0], x1, qf_ys_L[0])
+        svglines += connector(x0, r16_ys_L[1], x1, qf_ys_L[0])
+        svglines += connector(x0, r16_ys_L[2], x1, qf_ys_L[1])
+        svglines += connector(x0, r16_ys_L[3], x1, qf_ys_L[1])
+        # QFL → SFL
+        svglines += connector(x1, qf_ys_L[0], x2, sf_y_L)
+        svglines += connector(x1, qf_ys_L[1], x2, sf_y_L)
+        # SFL → Final
+        svglines += connector(x2, sf_y_L, x3, fin_y)
+        # R16R → QFR (mirrored)
+        svglines += connector_R(x5, qf_ys_R[0], x6, r16_ys_R[0])
+        svglines += connector_R(x5, qf_ys_R[0], x6, r16_ys_R[1])
+        svglines += connector_R(x5, qf_ys_R[1], x6, r16_ys_R[2])
+        svglines += connector_R(x5, qf_ys_R[1], x6, r16_ys_R[3])
+        # QFR → SFR
+        svglines += connector_R(x4, sf_y_R, x5, qf_ys_R[0])
+        svglines += connector_R(x4, sf_y_R, x5, qf_ys_R[1])
+        # SFR → Final
+        svglines += connector_R(x3, fin_y, x4, sf_y_R)
+
+        # Stage labels SVG
+        stage_labels = ""
+        for lx, label in [(x0,"Ronda de 16"),(x1,"Cuartos"),(x2,"Semifinal"),(x3,"Final"),(x4,"Semifinal"),(x5,"Cuartos"),(x6,"Ronda de 16")]:
+            stage_labels += f'<text x="{round(lx + CW/2)}" y="14" text-anchor="middle" font-size="10" font-weight="700" fill="#F5C518" font-family="sans-serif" letter-spacing="0.5">{label}</text>'
+
+        bracket_html = f"""
+        <div style="overflow-x:auto;padding:4px 0 12px;">
+          <div style="position:relative;width:{TOTAL_W}px;height:{round(TOTAL_H)}px;">
+            <svg style="position:absolute;top:0;left:0;width:{TOTAL_W}px;height:{round(TOTAL_H)}px;overflow:visible;">
+              {stage_labels}
+              {svglines}
+            </svg>
+            {cards}
+          </div>
         </div>
-      </div>
-    </div>
-    """
-    st.markdown(bracket_html, unsafe_allow_html=True)
+        """
+        st.markdown(bracket_html, unsafe_allow_html=True)
+
+    else:
+        # GROUP STAGE VIEW
+        for gstage in ["Jornada 1", "Jornada 2", "Jornada 3"]:
+            st.markdown(f"#### {gstage}")
+            gmatches = MATCHES_DEF[gstage]
+            cols = st.columns(6)
+            for idx, (t1, t2, date, _) in enumerate(gmatches):
+                result = get_r(gstage, idx)
+                with cols[idx % 6]:
+                    w1 = result == t1 if result else False
+                    w2 = result == t2 if result else False
+                    tbd = not result
+                    c1 = "#00d97e" if w1 else ("#555" if result == "Empate" or (result and not w1) else "#ddd")
+                    c2 = "#00d97e" if w2 else ("#555" if result == "Empate" or (result and not w2) else "#ddd")
+                    if result == "Empate": c1 = c2 = "#F5C518"
+                    st.markdown(f"""<div style="border:1px solid #2e2e3e;border-radius:8px;overflow:hidden;font-size:11px;background:#111;margin-bottom:6px;">
+                      <div style="background:#0a0a0a;padding:2px 7px;color:#555;font-size:9px;">{date}</div>
+                      <div style="padding:5px 7px;color:{c1};">{t1}</div>
+                      <div style="border-top:1px solid #1a1a1a;padding:5px 7px;color:{c2};">{t2}</div>
+                    </div>""", unsafe_allow_html=True)
+            st.markdown("---")
 
 # ══ TAB 2 — LEADERBOARD DETALLADO ══════════════════════════════════════
 with tab_lb:
