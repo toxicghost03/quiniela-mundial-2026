@@ -207,12 +207,13 @@ if "data_loaded" not in st.session_state:
     st.session_state.all_users        = d.get("users", {})
     st.session_state.result_overrides = d.get("results", {})
     st.session_state._gh_sha          = d.get("_sha", "")
-    # Restore deadlines, keeping defaults for any missing keys
+    # Restore deadlines safely
     saved_dl = d.get("deadlines", {})
-    if saved_dl:
-        for k in list(st.session_state.round_deadlines.keys()):
-            if k in saved_dl:
-                st.session_state.round_deadlines[k] = saved_dl[k]
+    if "round_deadlines" not in st.session_state:
+        st.session_state.round_deadlines = {}
+    default_dl = {"Ronda de 16":"2026-07-06T03:00:00+00:00","Cuartos de Final":None,"Semifinales":None,"Tercer Lugar":None,"Final":None}
+    for k, v in default_dl.items():
+        st.session_state.round_deadlines[k] = saved_dl.get(k, v)
     st.session_state.data_loaded      = True
 
 if "admin_unlocked" not in st.session_state: st.session_state.admin_unlocked = False
