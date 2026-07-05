@@ -233,7 +233,24 @@ with c2:
 locked       = is_locked()
 already_done = user_submitted()
 
-tab_picks, tab_lb, tab_admin = st.tabs(["🎯 Mis Picks","📊 Tabla","⚙️ Admin"])
+# ── LIVE LEADERBOARD on main page ─────────────────────────────────────
+recalc_all()
+users_lb = sorted(st.session_state.all_users.items(), key=lambda x: x[1].get("points",0), reverse=True)
+if users_lb:
+    medals = {0:"🥇",1:"🥈",2:"🥉"}
+    st.markdown("### 📊 Tabla en vivo")
+    rows_lb = []
+    for rank,(uid,u) in enumerate(users_lb):
+        rows_lb.append({
+            "#": medals.get(rank, rank+1),
+            "Nombre": f"⭐ {uid}" if uid==st.session_state.user_name else uid,
+            "Enviado": "✅" if u.get("submitted") else "⏳",
+            "Puntos 🏆": u.get("points", 0),
+        })
+    st.dataframe(pd.DataFrame(rows_lb), use_container_width=True, hide_index=True)
+    st.markdown("---")
+
+tab_picks, tab_lb, tab_admin = st.tabs(["🎯 Mis Picks","📊 Tabla detallada","⚙️ Admin"])
 
 # ══ TAB 1 — PICKS ══════════════════════════════════════════════════════
 with tab_picks:
