@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import json, pathlib
+import json, urllib.request, urllib.error, base64
 from datetime import datetime, timezone, timedelta
 
 st.set_page_config(page_title="Quiniela Mundial 2026 🏆", page_icon="⚽", layout="centered", initial_sidebar_state="collapsed")
@@ -18,11 +18,12 @@ div[data-testid="stMetric"] { background:#1a1a24; border:1px solid #2e2e3e; bord
 """, unsafe_allow_html=True)
 
 ADMIN_PASSWORD = "admin2026"
-DATA_FILE      = pathlib.Path("data.json")
+GH_TOKEN  = st.secrets["GH_TOKEN"]
+GH_REPO   = "toxicghost03/quiniela-mundial-2026"
+GH_FILE   = "data.json"
+GH_API    = f"https://api.github.com/repos/{GH_REPO}/contents/{GH_FILE}"
 
-# ── Deadline: July 5, 2026 at 9pm Costa Rica time (UTC-6) = July 6 03:00 UTC
 DEADLINE_UTC = datetime(2026, 7, 6, 3, 0, 0, tzinfo=timezone.utc)
-CR_TZ        = timezone(timedelta(hours=-6))
 
 def now_utc():
     return datetime.now(timezone.utc)
@@ -32,26 +33,43 @@ def is_locked():
 
 def time_remaining():
     delta = DEADLINE_UTC - now_utc()
-    if delta.total_seconds() <= 0:
-        return None
-    total = int(delta.total_seconds())
-    h, rem = divmod(total, 3600)
+    if delta.total_seconds() <= 0: return None
+    h, rem = divmod(int(delta.total_seconds()), 3600)
     m, s   = divmod(rem, 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
 
-def load_data():
-    if DATA_FILE.exists():
-        try: return json.loads(DATA_FILE.read_text())
-        except: pass
-    return {"users": {}, "results": {}}
+# ── GitHub persistence ─────────────────────────────────────────────────
+def gh_load():
+    try:
+        req = urllib.request.Request(GH_API,
+            headers={"Authorization": f"token {GH_TOKEN}", "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(req) as r:
+            resp = json.loads(r.read())
+            content = base64.b64decode(resp["content"]).decode()
+            data = json.loads(content)
+            data["_sha"] = resp["sha"]
+            return data
+    except:
+        return {"users": {}, "results": {}, "_sha": ""}
 
-def save_data():
-    DATA_FILE.write_text(json.dumps(
-        {"users": st.session_state.all_users,
-         "results": st.session_state.result_overrides},
-        ensure_ascii=False, indent=2))
+def gh_save():
+    data = {"users": st.session_state.all_users, "results": st.session_state.result_overrides}
+    sha  = st.session_state.get("_gh_sha", "")
+    body = json.dumps({"message": "Auto-save", "content": base64.b64encode(
+        json.dumps(data, ensure_ascii=False, indent=2).encode()).decode(),
+        "sha": sha}, ensure_ascii=False).encode()
+    try:
+        req = urllib.request.Request(GH_API, data=body, method="PUT",
+            headers={"Authorization": f"token {GH_TOKEN}",
+                     "Accept": "application/vnd.github+json",
+                     "Content-Type": "application/json"})
+        with urllib.request.urlopen(req) as r:
+            resp = json.loads(r.read())
+            st.session_state._gh_sha = resp.get("content", {}).get("sha", sha)
+    except Exception as e:
+        st.warning(f"⚠️ No se pudo guardar en GitHub: {e}")
 
-# ══ MATCHES ════════════════════════════════════════════════════════════
+# ══ MATCH DATA ═════════════════════════════════════════════════════════
 MATCHES_DEF = {
   "Jornada 1": [
     ("🇲🇽 México","🇿🇦 Sudáfrica","11 Jun",True),("🇰🇷 Corea del Sur","🇨🇿 Chequia","11 Jun",True),
@@ -140,22 +158,22 @@ def get_result(stage, sidx):
     known = KNOWN_RESULTS.get(stage, [])
     return known[sidx] if sidx < len(known) else None
 
-# ── Load persisted data once ───────────────────────────────────────────
+# ── Load from GitHub once per session ─────────────────────────────────
 if "data_loaded" not in st.session_state:
-    d = load_data()
+    with st.spinner("Cargando datos..."):
+        d = gh_load()
     st.session_state.all_users        = d.get("users", {})
     st.session_state.result_overrides = d.get("results", {})
+    st.session_state._gh_sha          = d.get("_sha", "")
     st.session_state.data_loaded      = True
 
 if "admin_unlocked" not in st.session_state: st.session_state.admin_unlocked = False
 if "user_name"      not in st.session_state: st.session_state.user_name      = None
 if "picks"          not in st.session_state: st.session_state.picks          = [None]*TOTAL
-if "submitted"      not in st.session_state: st.session_state.submitted      = False
 
 def recalc_all():
     sl = {}
-    for i,(stage,m) in enumerate(ALL_MATCHES):
-        sl.setdefault(stage,[]).append(i)
+    for i,(stage,m) in enumerate(ALL_MATCHES): sl.setdefault(stage,[]).append(i)
     for uid,u in st.session_state.all_users.items():
         pts=0; upicks=u.get("picks",[])
         for i,(stage,m) in enumerate(ALL_MATCHES):
@@ -169,9 +187,11 @@ def save_my_picks():
     if not uid: return
     p=list(st.session_state.picks)
     if len(p)<TOTAL: p+=[None]*(TOTAL-len(p))
+    if uid not in st.session_state.all_users:
+        st.session_state.all_users[uid]={"picks":[None]*TOTAL,"points":0,"submitted":False}
     st.session_state.all_users[uid]["picks"]=p
     st.session_state.all_users[uid]["submitted"]=True
-    recalc_all(); save_data()
+    recalc_all(); gh_save()
 
 def save_user_picks(uid, new_picks):
     p=list(new_picks)
@@ -179,51 +199,41 @@ def save_user_picks(uid, new_picks):
     if uid not in st.session_state.all_users:
         st.session_state.all_users[uid]={"picks":[None]*TOTAL,"points":0,"submitted":False}
     st.session_state.all_users[uid]["picks"]=p
-    recalc_all(); save_data()
+    recalc_all(); gh_save()
 
 def user_submitted():
-    uid=st.session_state.user_name
-    return st.session_state.all_users.get(uid,{}).get("submitted",False)
+    return st.session_state.all_users.get(st.session_state.user_name,{}).get("submitted",False)
 
-# ══ LOGIN ══════════════════════════════════════════════════════════════
+# ══ LOGIN PAGE ══════════════════════════════════════════════════════════
 if not st.session_state.user_name:
     st.markdown('<p class="big-title">⚽ QUINIELA<br>MUNDIAL 2026</p>', unsafe_allow_html=True)
-    st.markdown("---")
-
-    # Show countdown or locked
-    remaining = time_remaining()
+    remaining=time_remaining()
     if remaining:
         st.markdown(f'<p class="countdown">⏳ Cierra en: {remaining}</p>', unsafe_allow_html=True)
-        st.caption("📅 Deadline: Domingo 5 Jul · 9pm hora Costa Rica")
+        st.caption("📅 Deadline: Domingo 5 Jul · 9pm Costa Rica")
     else:
-        st.markdown('<div class="locked-banner">🔒 La quiniela está cerrada — el tiempo se acabó</div>', unsafe_allow_html=True)
-
+        st.markdown('<div class="locked-banner">🔒 La quiniela está cerrada</div>', unsafe_allow_html=True)
     st.markdown("---")
 
-    # Live leaderboard on landing page
+    # Live leaderboard on landing
     recalc_all()
-    users_landing = sorted(st.session_state.all_users.items(), key=lambda x: x[1].get("points",0), reverse=True)
-    if users_landing:
-        medals = {0:"🥇",1:"🥈",2:"🥉"}
+    users_lb=sorted(st.session_state.all_users.items(),key=lambda x:x[1].get("points",0),reverse=True)
+    if users_lb:
+        medals={0:"🥇",1:"🥈",2:"🥉"}
         st.markdown("### 📊 Tabla en vivo")
-        rows_l = []
-        for rank,(uid,u) in enumerate(users_landing):
-            rows_l.append({
-                "#": medals.get(rank, rank+1),
-                "Nombre": uid,
-                "Enviado": "✅" if u.get("submitted") else "⏳",
-                "Puntos 🏆": u.get("points", 0),
-            })
-        st.dataframe(pd.DataFrame(rows_l), use_container_width=True, hide_index=True)
+        rows_l=[]
+        for rank,(uid,u) in enumerate(users_lb):
+            rows_l.append({"#":medals.get(rank,rank+1),"Nombre":uid,
+                           "Enviado":"✅" if u.get("submitted") else "⏳",
+                           "Puntos 🏆":u.get("points",0)})
+        st.dataframe(pd.DataFrame(rows_l),use_container_width=True,hide_index=True)
         st.markdown("---")
 
-    name = st.text_input("¿Cuál es tu nombre?", max_chars=30, placeholder="Ej: Mamá, Juan, Tito...")
-    if st.button("Entrar 🚀", use_container_width=True, type="primary"):
-        if not name.strip():
-            st.error("Escribe tu nombre")
+    name=st.text_input("¿Cuál es tu nombre?",max_chars=30,placeholder="Ej: Mamá, Juan, Tito...")
+    if st.button("Entrar 🚀",use_container_width=True,type="primary"):
+        if not name.strip(): st.error("Escribe tu nombre")
         else:
-            n=name.strip()
-            st.session_state.user_name=n
+            n=name.strip(); st.session_state.user_name=n
             if n in st.session_state.all_users:
                 p=st.session_state.all_users[n].get("picks",[None]*TOTAL)
                 if len(p)<TOTAL: p+=[None]*(TOTAL-len(p))
@@ -231,81 +241,70 @@ if not st.session_state.user_name:
             else:
                 st.session_state.all_users[n]={"picks":[None]*TOTAL,"points":0,"submitted":False}
                 st.session_state.picks=[None]*TOTAL
-                save_data()
+                gh_save()
             st.rerun()
     st.stop()
 
-# ══ HEADER ═════════════════════════════════════════════════════════════
+# ══ MAIN APP ════════════════════════════════════════════════════════════
 st.markdown('<p class="big-title">⚽ QUINIELA 2026</p>', unsafe_allow_html=True)
-c1, c2 = st.columns([4,1])
+c1,c2=st.columns([4,1])
 with c1:
-    remaining=time_remaining()
-    if remaining:
-        st.markdown(f'<span style="color:#F5C518;font-weight:700">⏳ {remaining}</span>', unsafe_allow_html=True)
-    else:
-        st.caption("🔒 Cerrada")
+    rem=time_remaining()
+    if rem: st.markdown(f'<span style="color:#F5C518;font-weight:700">⏳ {rem}</span>',unsafe_allow_html=True)
+    else: st.caption("🔒 Cerrada")
 with c2:
     if st.button("Salir"):
         st.session_state.user_name=None; st.session_state.picks=[None]*TOTAL; st.rerun()
 
-locked       = is_locked()
-already_done = user_submitted()
+st.caption(f"Jugando como: **{st.session_state.user_name}**")
 
-# ── LIVE LEADERBOARD on main page ─────────────────────────────────────
+# Live leaderboard always visible
 recalc_all()
-users_lb = sorted(st.session_state.all_users.items(), key=lambda x: x[1].get("points",0), reverse=True)
-if users_lb:
-    medals = {0:"🥇",1:"🥈",2:"🥉"}
+users_main=sorted(st.session_state.all_users.items(),key=lambda x:x[1].get("points",0),reverse=True)
+if users_main:
+    medals={0:"🥇",1:"🥈",2:"🥉"}
     st.markdown("### 📊 Tabla en vivo")
-    rows_lb = []
-    for rank,(uid,u) in enumerate(users_lb):
-        rows_lb.append({
-            "#": medals.get(rank, rank+1),
-            "Nombre": f"⭐ {uid}" if uid==st.session_state.user_name else uid,
-            "Enviado": "✅" if u.get("submitted") else "⏳",
-            "Puntos 🏆": u.get("points", 0),
-        })
-    st.dataframe(pd.DataFrame(rows_lb), use_container_width=True, hide_index=True)
-    st.markdown("---")
+    rows_m=[]
+    for rank,(uid,u) in enumerate(users_main):
+        rows_m.append({"#":medals.get(rank,rank+1),
+                       "Nombre":f"⭐ {uid}" if uid==st.session_state.user_name else uid,
+                       "Enviado":"✅" if u.get("submitted") else "⏳",
+                       "Puntos 🏆":u.get("points",0)})
+    st.dataframe(pd.DataFrame(rows_m),use_container_width=True,hide_index=True)
+st.markdown("---")
 
-tab_picks, tab_lb, tab_admin = st.tabs(["🎯 Mis Picks","📊 Tabla detallada","⚙️ Admin"])
+locked=is_locked(); already_done=user_submitted()
+tab_picks,tab_lb,tab_admin=st.tabs(["🎯 Mis Picks","📊 Tabla detallada","⚙️ Admin"])
 
 # ══ TAB 1 — PICKS ══════════════════════════════════════════════════════
 with tab_picks:
-    st.caption(f"Jugando como: **{st.session_state.user_name}**")
-
     if already_done:
-        st.markdown('<div class="locked-banner">✅ Ya enviaste tu quiniela — ¡suerte! No se puede modificar.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="locked-banner">✅ Ya enviaste tu quiniela — ¡suerte!</div>',unsafe_allow_html=True)
     elif locked:
-        st.markdown('<div class="locked-banner">🔒 El tiempo se acabó — la quiniela está cerrada.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="locked-banner">🔒 El tiempo se acabó.</div>',unsafe_allow_html=True)
     else:
-        st.markdown('<div class="open-banner">🟢 ¡La quiniela está abierta! Selecciona todos tus picks y guárdalos. Una vez que guardes, no podrás cambiarlos.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="open-banner">🟢 Selecciona todos tus picks y guárdalos. Una vez que guardes, no podrás cambiarlos.</div>',unsafe_allow_html=True)
 
     picks=list(st.session_state.picks); changed=False; sc={}
-    can_edit = not locked and not already_done
+    can_edit=not locked and not already_done
 
-    for stage, matches in MATCHES_DEF.items():
-        is_group = "Jornada" in stage
-        is_past  = stage not in ["Ronda de 16"]
-        with st.expander(f"{'🔒' if is_past else '🟢'} {stage}", expanded=not is_past):
+    for stage,matches in MATCHES_DEF.items():
+        is_group="Jornada" in stage; is_past=stage!="Ronda de 16"
+        with st.expander(f"{'🔒' if is_past else '🟢'} {stage}",expanded=not is_past):
             for i,(stg,m) in enumerate(ALL_MATCHES):
                 if stg!=stage: continue
-                t1,t2,date,_ = m
+                t1,t2,date,_=m
                 sidx=sc.get(stage,0); sc[stage]=sidx+1
-                result=get_result(stage,sidx) if already_done or locked else None
                 pick=picks[i]; pts=get_pts(stage)
-
                 if is_past:
-                    # Show result only after submission
                     actual=get_result(stage,sidx)
                     correct=(pick==actual) if actual else False
                     if already_done or locked:
-                        icon="✅" if correct else ("❌" if (pick and actual) else "📋")
-                        st.markdown(f"**{icon} {t1} vs {t2}** · {date}" + (f" · Ganó: **{actual}**" if actual else ""))
-                        if pick: st.caption(f"Tu pick: {pick}" + (f" · **+{pts}pts** 🎉" if correct else ""))
+                        icon="✅" if correct else("❌" if(pick and actual) else "📋")
+                        st.markdown(f"**{icon} {t1} vs {t2}** · {date}"+(f" · Ganó: **{actual}**" if actual else ""))
+                        if pick: st.caption(f"Tu pick: {pick}"+(f" · **+{pts}pts** 🎉" if correct else ""))
                         else: st.caption("_Sin pick_")
                     else:
-                        # Picking phase — no result shown, no correct/incorrect
                         if can_edit:
                             opts=["— Sin pick —",t1,"Empate",t2] if is_group else ["— Sin pick —",t1,t2]
                             ci=0
@@ -314,22 +313,19 @@ with tab_picks:
                             elif pick==t2: ci=3 if is_group else 2
                             st.markdown(f"**{t1} vs {t2}** · {date}")
                             sel=st.radio(f"p{i}",opts,index=ci,key=f"pick_{i}",horizontal=True,label_visibility="collapsed")
-                            new_val=None if sel=="— Sin pick —" else sel
-                            if new_val!=picks[i]: picks[i]=new_val; changed=True
+                            nv=None if sel=="— Sin pick —" else sel
+                            if nv!=picks[i]: picks[i]=nv; changed=True
                         else:
                             st.markdown(f"**{t1} vs {t2}** · {date}")
                             st.caption(f"Tu pick: {pick or '_sin pick_'}")
                 else:
-                    # R16 — active picks
                     actual=get_result(stage,sidx)
-                    if actual and (already_done or locked):
-                        correct=(pick==actual)
-                        icon="✅" if correct else ("❌" if pick else "⏹️")
+                    if actual and(already_done or locked):
+                        correct=(pick==actual); icon="✅" if correct else("❌" if pick else "⏹️")
                         st.markdown(f"**{icon} {t1} vs {t2}** · {date} · Ganó: **{actual}**")
-                        if pick: st.caption(f"Tu pick: {pick}" + (f" · **+{pts}pts** 🎉" if correct else ""))
+                        if pick: st.caption(f"Tu pick: {pick}"+(f" · **+{pts}pts** 🎉" if correct else ""))
                     elif can_edit:
-                        opts=[t1,t2]
-                        cur=picks[i] if picks[i] in opts else None
+                        opts=[t1,t2]; cur=picks[i] if picks[i] in opts else None
                         st.markdown(f"**🕐 {t1} vs {t2}** · {date}")
                         sel=st.radio(f"p{i}",opts,index=opts.index(cur) if cur else None,key=f"pick_{i}",horizontal=True,label_visibility="collapsed")
                         if sel!=picks[i]: picks[i]=sel; changed=True
@@ -339,33 +335,21 @@ with tab_picks:
                 st.divider()
 
     if changed: st.session_state.picks=picks
-
     if can_edit:
-        total_picks=sum(1 for p in picks if p)
-        st.progress(total_picks/TOTAL, text=f"{total_picks}/{TOTAL} picks completados")
-        st.warning("⚠️ Una vez que guardes, **no podrás cambiar tus picks**. ¡Asegúrate de haberlos revisado todos!")
-        if st.button("🚀 GUARDAR Y ENVIAR MI QUINIELA (definitivo)", type="primary", use_container_width=True):
-            save_my_picks()
-            st.success("✅ ¡Quiniela enviada! Ya no puedes cambiarla. ¡Mucha suerte!")
-            st.balloons()
-            st.rerun()
+        total_p=sum(1 for p in picks if p)
+        st.progress(total_p/TOTAL,text=f"{total_p}/{TOTAL} picks completados")
+        st.warning("⚠️ Una vez que guardes, **no podrás cambiar tus picks**.")
+        if st.button("🚀 GUARDAR Y ENVIAR MI QUINIELA (definitivo)",type="primary",use_container_width=True):
+            save_my_picks(); st.success("✅ ¡Quiniela enviada!"); st.balloons(); st.rerun()
 
-# ══ TAB 2 — LEADERBOARD ════════════════════════════════════════════════
+# ══ TAB 2 — LEADERBOARD DETALLADO ══════════════════════════════════════
 with tab_lb:
     recalc_all()
-    st.subheader("📊 Tabla de Posiciones")
+    st.subheader("📊 Tabla Detallada")
     users=sorted(st.session_state.all_users.items(),key=lambda x:x[1].get("points",0),reverse=True)
-    if not users:
-        st.info("Nadie registrado aún.")
+    if not users: st.info("Nadie registrado aún.")
     else:
         medals={0:"🥇",1:"🥈",2:"🥉"}
-        top3=users[:min(3,len(users))]
-        cols=st.columns(len(top3))
-        for pos,(uid,u) in enumerate(top3):
-            with cols[pos]:
-                submitted="✅" if u.get("submitted") else "⏳"
-                st.metric(label=f"{medals[pos]} {uid} {submitted}",value=f"{u.get('points',0)} pts")
-        st.markdown("---")
         sl={}
         for i,(stage,m) in enumerate(ALL_MATCHES): sl.setdefault(stage,[]).append(i)
         rows=[]
@@ -395,10 +379,10 @@ with tab_admin:
             else: st.error("Contraseña incorrecta")
     else:
         st.subheader("⚙️ Panel de Admin")
-        adm1,adm2,adm3=st.tabs(["🏆 Poner resultados","👤 Picks de usuario","➕ Agregar usuario"])
+        adm1,adm2,adm3=st.tabs(["🏆 Poner resultados","👤 Picks de usuario","➕ Usuarios"])
 
         with adm1:
-            st.caption("Selecciona quién ganó. Los puntos se recalculan solos al guardar.")
+            st.caption("Selecciona quién ganó. Los puntos se recalculan y guardan en GitHub.")
             for stage,matches in MATCHES_DEF.items():
                 with st.expander(f"📋 {stage}",expanded=(stage in ["Ronda de 16","Ronda de 32"])):
                     is_group="Jornada" in stage; new_res={}
@@ -416,8 +400,8 @@ with tab_admin:
                         st.divider()
                     if st.button(f"💾 Guardar {stage}",key=f"save_{stage}",type="primary",use_container_width=True):
                         st.session_state.result_overrides.update(new_res)
-                        recalc_all(); save_data()
-                        st.success(f"✅ {stage} guardado.")
+                        recalc_all(); gh_save()
+                        st.success(f"✅ {stage} guardado en GitHub.")
 
         with adm2:
             user_list=list(st.session_state.all_users.keys())
@@ -453,9 +437,9 @@ with tab_admin:
                         save_user_picks(sel_user,edited)
                         st.success(f"✅ {sel_user}: {st.session_state.all_users[sel_user]['points']} pts")
                 with col2:
-                    if st.button(f"🔓 Marcar como enviado",use_container_width=True):
+                    if st.button("🔓 Marcar como enviado",use_container_width=True):
                         st.session_state.all_users[sel_user]["submitted"]=True
-                        save_data(); st.success(f"✅ {sel_user} marcado como enviado.")
+                        gh_save(); st.success("✅ Marcado como enviado.")
 
         with adm3:
             st.subheader("➕ Agregar usuario")
@@ -466,20 +450,20 @@ with tab_admin:
                 elif n in st.session_state.all_users: st.warning(f"{n} ya existe.")
                 else:
                     st.session_state.all_users[n]={"picks":[None]*TOTAL,"points":0,"submitted":False}
-                    save_data(); st.success(f"✅ Usuario **{n}** creado."); st.rerun()
+                    gh_save(); st.success(f"✅ Usuario **{n}** creado y guardado en GitHub."); st.rerun()
             st.markdown("---")
             st.subheader("👥 Todos los usuarios")
             users_s=sorted(st.session_state.all_users.items(),key=lambda x:x[1].get("points",0),reverse=True)
             for rank,(uid,u) in enumerate(users_s):
                 picks_done=sum(1 for p in u.get("picks",[]) if p)
-                submitted="✅ enviado" if u.get("submitted") else "⏳ pendiente"
-                col_a, col_b = st.columns([4,1])
+                submitted="✅" if u.get("submitted") else "⏳"
+                col_a,col_b=st.columns([5,1])
                 with col_a:
                     st.markdown(f"**{rank+1}. {uid}** · {submitted} · {picks_done}/{TOTAL} picks · **{u.get('points',0)} pts**")
                 with col_b:
-                    if st.button("🗑️", key=f"del_{uid}", help=f"Eliminar {uid}"):
+                    if st.button("🗑️",key=f"del_{uid}",help=f"Eliminar {uid}"):
                         del st.session_state.all_users[uid]
-                        save_data(); st.rerun()
+                        gh_save(); st.rerun()
 
         st.markdown("---")
         if st.button("🔒 Cerrar sesión admin"):
