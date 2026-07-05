@@ -199,6 +199,24 @@ if not st.session_state.user_name:
         st.markdown('<div class="locked-banner">🔒 La quiniela está cerrada — el tiempo se acabó</div>', unsafe_allow_html=True)
 
     st.markdown("---")
+
+    # Live leaderboard on landing page
+    recalc_all()
+    users_landing = sorted(st.session_state.all_users.items(), key=lambda x: x[1].get("points",0), reverse=True)
+    if users_landing:
+        medals = {0:"🥇",1:"🥈",2:"🥉"}
+        st.markdown("### 📊 Tabla en vivo")
+        rows_l = []
+        for rank,(uid,u) in enumerate(users_landing):
+            rows_l.append({
+                "#": medals.get(rank, rank+1),
+                "Nombre": uid,
+                "Enviado": "✅" if u.get("submitted") else "⏳",
+                "Puntos 🏆": u.get("points", 0),
+            })
+        st.dataframe(pd.DataFrame(rows_l), use_container_width=True, hide_index=True)
+        st.markdown("---")
+
     name = st.text_input("¿Cuál es tu nombre?", max_chars=30, placeholder="Ej: Mamá, Juan, Tito...")
     if st.button("Entrar 🚀", use_container_width=True, type="primary"):
         if not name.strip():
