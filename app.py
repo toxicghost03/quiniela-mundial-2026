@@ -133,6 +133,22 @@ MATCHES_DEF = {
     ("🇦🇷 Argentina","🇪🇬 Egipto","7 Jul · 12pm ET",False),
     ("🇨🇭 Suiza","🇨🇴 Colombia","7 Jul · 4pm ET",False),
   ],
+  "Cuartos de Final": [
+    ("⏳ TBD","⏳ TBD","9 Jul",False),
+    ("⏳ TBD","⏳ TBD","10 Jul",False),
+    ("⏳ TBD","⏳ TBD","11 Jul",False),
+    ("⏳ TBD","⏳ TBD","11 Jul",False),
+  ],
+  "Semifinales": [
+    ("⏳ TBD","⏳ TBD","14 Jul",False),
+    ("⏳ TBD","⏳ TBD","15 Jul",False),
+  ],
+  "Tercer Lugar": [
+    ("⏳ TBD","⏳ TBD","18 Jul",False),
+  ],
+  "Final": [
+    ("⏳ TBD","⏳ TBD","19 Jul",False),
+  ],
 }
 
 KNOWN_RESULTS = {
@@ -141,6 +157,10 @@ KNOWN_RESULTS = {
   "Jornada 3":   ["🇲🇽 México","🇰🇷 Corea del Sur","🇨🇭 Suiza","🇧🇦 Bosnia","🇧🇷 Brasil","🇲🇦 Marruecos","🇹🇷 Turquía","Empate","🇨🇮 Costa Marfil","🇪🇨 Ecuador","Empate","🇳🇱 Países Bajos","🇧🇪 Bélgica","Empate","Empate","🇪🇸 España","🇫🇷 Francia","🇸🇳 Senegal","🇦🇷 Argentina","Empate","Empate","🇨🇩 Congo RD","🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra","🇭🇷 Croacia"],
   "Ronda de 32": ["🇨🇦 Canadá","🇧🇷 Brasil","🇵🇾 Paraguay","🇲🇦 Marruecos","🇳🇴 Noruega","🇫🇷 Francia","🇲🇽 México","🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra","🇧🇪 Bélgica","🇺🇸 USA","🇪🇸 España","🇵🇹 Portugal","🇨🇭 Suiza","🇪🇬 Egipto","🇦🇷 Argentina","🇨🇴 Colombia"],
   "Ronda de 16": ["🇲🇦 Marruecos",None,None,None,None,None,None,None],
+  "Cuartos de Final": [None,None,None,None],
+  "Semifinales": [None,None],
+  "Tercer Lugar": [None],
+  "Final": [None],
 }
 
 ALL_MATCHES = [(stage, m) for stage, matches in MATCHES_DEF.items() for m in matches]
@@ -289,14 +309,22 @@ with tab_picks:
     can_edit=not locked and not already_done
 
     for stage,matches in MATCHES_DEF.items():
-        is_group="Jornada" in stage; is_past=stage!="Ronda de 16"
-        with st.expander(f"{'🔒' if is_past else '🟢'} {stage}",expanded=not is_past):
+        is_group="Jornada" in stage
+        is_past=stage not in ["Ronda de 16","Cuartos de Final","Semifinales","Tercer Lugar","Final"]
+        is_future=stage in ["Cuartos de Final","Semifinales","Tercer Lugar","Final"]
+        all_tbd=all(m[0]=="⏳ TBD" for m in matches)
+        icon = "🔒" if is_past else ("⏳" if all_tbd else "🟢")
+        with st.expander(f"{icon} {stage}",expanded=(not is_past and not all_tbd)):
             for i,(stg,m) in enumerate(ALL_MATCHES):
                 if stg!=stage: continue
                 t1,t2,date,_=m
                 sidx=sc.get(stage,0); sc[stage]=sidx+1
                 pick=picks[i]; pts=get_pts(stage)
-                if is_past:
+                # TBD match — not yet assigned by admin
+                if t1 == "⏳ TBD":
+                    st.markdown(f"**⏳ Por definir** · {date}")
+                    st.caption("_El admin actualizará los equipos cuando avance el torneo_")
+                elif is_past:
                     actual=get_result(stage,sidx)
                     correct=(pick==actual) if actual else False
                     if already_done or locked:
@@ -324,7 +352,7 @@ with tab_picks:
                         correct=(pick==actual); icon="✅" if correct else("❌" if pick else "⏹️")
                         st.markdown(f"**{icon} {t1} vs {t2}** · {date} · Ganó: **{actual}**")
                         if pick: st.caption(f"Tu pick: {pick}"+(f" · **+{pts}pts** 🎉" if correct else ""))
-                    elif can_edit:
+                    elif can_edit and not is_future:
                         opts=[t1,t2]; cur=picks[i] if picks[i] in opts else None
                         st.markdown(f"**🕐 {t1} vs {t2}** · {date}")
                         sel=st.radio(f"p{i}",opts,index=opts.index(cur) if cur else None,key=f"pick_{i}",horizontal=True,label_visibility="collapsed")
@@ -388,15 +416,26 @@ with tab_admin:
                     is_group="Jornada" in stage; new_res={}
                     for sidx,(t1,t2,date,_) in enumerate(matches):
                         cur=get_result(stage,sidx)
-                        st.markdown(f"**{t1} vs {t2}** · {date}")
-                        if is_group:
-                            opts=["⏳ Pendiente",t1,"Empate",t2]
-                            ci=1 if cur==t1 else(2 if cur=="Empate" else(3 if cur==t2 else 0))
+                        if t1=="⏳ TBD":
+                            st.markdown(f"**Partido {sidx+1}** · {date} — Equipos por definir")
+                            col_t1,col_t2=st.columns(2)
+                            with col_t1:
+                                new_t1=st.text_input(f"Equipo 1",key=f"tbd_t1_{stage}_{sidx}",placeholder="Ej: 🇧🇷 Brasil")
+                            with col_t2:
+                                new_t2=st.text_input(f"Equipo 2",key=f"tbd_t2_{stage}_{sidx}",placeholder="Ej: 🇦🇷 Argentina")
+                            new_res[f"tbd_{stage}_{sidx}_t1"]=new_t1 or None
+                            new_res[f"tbd_{stage}_{sidx}_t2"]=new_t2 or None
+                            new_res[f"{stage}_{sidx}"]=None
                         else:
-                            opts=["⏳ Pendiente",t1,t2]
-                            ci=1 if cur==t1 else(2 if cur==t2 else 0)
-                        sel=st.radio(f"res_{stage}_{sidx}",opts,index=ci,key=f"admin_res_{stage}_{sidx}",horizontal=True,label_visibility="collapsed")
-                        new_res[f"{stage}_{sidx}"]=None if sel=="⏳ Pendiente" else sel
+                            st.markdown(f"**{t1} vs {t2}** · {date}")
+                            if is_group:
+                                opts=["⏳ Pendiente",t1,"Empate",t2]
+                                ci=1 if cur==t1 else(2 if cur=="Empate" else(3 if cur==t2 else 0))
+                            else:
+                                opts=["⏳ Pendiente",t1,t2]
+                                ci=1 if cur==t1 else(2 if cur==t2 else 0)
+                            sel=st.radio(f"res_{stage}_{sidx}",opts,index=ci,key=f"admin_res_{stage}_{sidx}",horizontal=True,label_visibility="collapsed")
+                            new_res[f"{stage}_{sidx}"]=None if sel=="⏳ Pendiente" else sel
                         st.divider()
                     if st.button(f"💾 Guardar {stage}",key=f"save_{stage}",type="primary",use_container_width=True):
                         st.session_state.result_overrides.update(new_res)
