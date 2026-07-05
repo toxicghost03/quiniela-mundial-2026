@@ -310,14 +310,14 @@
         null,
         null,
         null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
+        "🇲🇦 Marruecos",
+        "🇫🇷 Francia",
+        "🇳🇴 Noruega",
+        "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra",
+        "🇪🇸 España",
+        "🇧🇪 Bélgica",
+        "🇦🇷 Argentina",
+        "🇨🇴 Colombia",
         null,
         null,
         null,
@@ -327,8 +327,8 @@
         null,
         null
       ],
-      "points": 0,
-      "submitted": false
+      "points": 10,
+      "submitted": true
     }
   },
   "results": {
