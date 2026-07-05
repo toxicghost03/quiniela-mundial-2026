@@ -473,7 +473,13 @@ with tab_admin:
             for rank,(uid,u) in enumerate(users_s):
                 picks_done=sum(1 for p in u.get("picks",[]) if p)
                 submitted="✅ enviado" if u.get("submitted") else "⏳ pendiente"
-                st.markdown(f"**{rank+1}. {uid}** · {submitted} · {picks_done}/{TOTAL} picks · **{u.get('points',0)} pts**")
+                col_a, col_b = st.columns([4,1])
+                with col_a:
+                    st.markdown(f"**{rank+1}. {uid}** · {submitted} · {picks_done}/{TOTAL} picks · **{u.get('points',0)} pts**")
+                with col_b:
+                    if st.button("🗑️", key=f"del_{uid}", help=f"Eliminar {uid}"):
+                        del st.session_state.all_users[uid]
+                        save_data(); st.rerun()
 
         st.markdown("---")
         if st.button("🔒 Cerrar sesión admin"):
