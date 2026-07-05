@@ -209,8 +209,10 @@ if "data_loaded" not in st.session_state:
     st.session_state._gh_sha          = d.get("_sha", "")
     # Restore deadlines, keeping defaults for any missing keys
     saved_dl = d.get("deadlines", {})
-    for k,v in saved_dl.items():
-        st.session_state.round_deadlines[k] = v
+    if saved_dl:
+        for k in list(st.session_state.round_deadlines.keys()):
+            if k in saved_dl:
+                st.session_state.round_deadlines[k] = saved_dl[k]
     st.session_state.data_loaded      = True
 
 if "admin_unlocked" not in st.session_state: st.session_state.admin_unlocked = False
@@ -218,13 +220,17 @@ if "user_name"      not in st.session_state: st.session_state.user_name      = N
 if "picks"          not in st.session_state: st.session_state.picks          = [None]*TOTAL
 # Per-round deadlines (UTC timestamps as ISO strings, set by admin)
 if "round_deadlines" not in st.session_state:
-    st.session_state.round_deadlines = {
-        "Ronda de 16":     "2026-07-06T03:00:00+00:00",  # Jul 5 9pm CR
-        "Cuartos de Final": None,
-        "Semifinales":      None,
-        "Tercer Lugar":     None,
-        "Final":            None,
-    }
+    st.session_state.round_deadlines = {}
+_default_deadlines = {
+    "Ronda de 16":     "2026-07-06T03:00:00+00:00",
+    "Cuartos de Final": None,
+    "Semifinales":      None,
+    "Tercer Lugar":     None,
+    "Final":            None,
+}
+for _k, _v in _default_deadlines.items():
+    if _k not in st.session_state.round_deadlines:
+        st.session_state.round_deadlines[_k] = _v
 
 def recalc_all():
     sl = {}
