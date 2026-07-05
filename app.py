@@ -294,7 +294,7 @@ if users_main:
 st.markdown("---")
 
 locked=is_locked(); already_done=user_submitted()
-tab_picks,tab_lb,tab_admin=st.tabs(["🎯 Mis Picks","📊 Tabla detallada","⚙️ Admin"])
+tab_picks,tab_lb,tab_bracket,tab_admin=st.tabs(["🎯 Mis Picks","📊 Tabla","🏆 Bracket","⚙️ Admin"])
 
 # ══ TAB 1 — PICKS ══════════════════════════════════════════════════════
 with tab_picks:
@@ -369,6 +369,76 @@ with tab_picks:
         st.warning("⚠️ Una vez que guardes, **no podrás cambiar tus picks**.")
         if st.button("🚀 GUARDAR Y ENVIAR MI QUINIELA (definitivo)",type="primary",use_container_width=True):
             save_my_picks(); st.success("✅ ¡Quiniela enviada!"); st.balloons(); st.rerun()
+
+# ══ TAB BRACKET ═══════════════════════════════════════════════════════════
+with tab_bracket:
+    st.subheader("🏆 Bracket del Mundial 2026")
+    st.caption("Visualización completa del torneo — fase de grupos hasta la final.")
+
+    def get_r(stage, sidx):
+        key = f"{stage}_{sidx}"
+        if key in st.session_state.result_overrides:
+            return st.session_state.result_overrides[key]
+        known = KNOWN_RESULTS.get(stage, [])
+        return known[sidx] if sidx < len(known) else None
+
+    def team_box(team, result, pts_stage):
+        flag = team.split(" ")[0] if team and team != "⏳ TBD" else "⏳"
+        name = " ".join(team.split(" ")[1:]) if team and team != "⏳ TBD" else "TBD"
+        won  = result == team if result else False
+        return flag, name, won
+
+    # Build bracket data from matches
+    bracket_stages = [
+        ("Ronda de 32",  MATCHES_DEF["Ronda de 32"],  "Ronda de 32"),
+        ("Ronda de 16",  MATCHES_DEF["Ronda de 16"],  "Ronda de 16"),
+        ("Cuartos de Final", MATCHES_DEF["Cuartos de Final"], "Cuartos de Final"),
+        ("Semifinales",  MATCHES_DEF["Semifinales"],  "Semifinales"),
+        ("Final",        MATCHES_DEF["Final"],        "Final"),
+    ]
+
+    for stage_name, matches, stage_key in bracket_stages:
+        results_list = [get_r(stage_key, i) for i in range(len(matches))]
+        cols_n = min(len(matches), 4)
+        st.markdown(f"##### {stage_name}")
+        cols = st.columns(cols_n)
+        for idx, (t1, t2, date, _) in enumerate(matches):
+            result = results_list[idx]
+            with cols[idx % cols_n]:
+                t1_won = result == t1 if result else False
+                t2_won = result == t2 if result else False
+                t1_style = "background:#1a3a1a;border-left:3px solid #00d97e;" if t1_won else ("background:#3a1a1a;border-left:3px solid #ff4d6d;" if (result and not t1_won) else "background:#1a1a24;")
+                t2_style = "background:#1a3a1a;border-left:3px solid #00d97e;" if t2_won else ("background:#3a1a1a;border-left:3px solid #ff4d6d;" if (result and not t2_won) else "background:#1a1a24;")
+                tbd = t1 == "⏳ TBD"
+                if tbd:
+                    st.markdown(f"""<div style="border:1px solid #2e2e3e;border-radius:8px;overflow:hidden;margin-bottom:8px;">
+                        <div style="background:#111;padding:4px 8px;font-size:10px;color:#6b6b80;">{date}</div>
+                        <div style="padding:6px 8px;color:#6b6b80;font-size:12px;">⏳ Por definir</div>
+                    </div>""", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""<div style="border:1px solid #2e2e3e;border-radius:8px;overflow:hidden;margin-bottom:8px;">
+                        <div style="background:#111;padding:4px 8px;font-size:10px;color:#6b6b80;">{date}</div>
+                        <div style="{t1_style};padding:6px 8px;font-size:12px;font-weight:{'700' if t1_won else '400'}">{t1}</div>
+                        <div style="border-top:1px solid #2e2e3e;{t2_style};padding:6px 8px;font-size:12px;font-weight:{'700' if t2_won else '400'}">{t2}</div>
+                    </div>""", unsafe_allow_html=True)
+        st.markdown("---")
+
+    # Group stage summary
+    with st.expander("📋 Resultados Fase de Grupos"):
+        for gstage in ["Jornada 1", "Jornada 2", "Jornada 3"]:
+            st.markdown(f"**{gstage}**")
+            gmatches = MATCHES_DEF[gstage]
+            cols = st.columns(4)
+            for idx, (t1, t2, date, _) in enumerate(gmatches):
+                result = get_r(gstage, idx)
+                with cols[idx % 4]:
+                    if result == "Empate":
+                        st.markdown(f"<div style='font-size:11px;padding:3px 0;color:#6b6b80'>{t1} <b>=</b> {t2}</div>", unsafe_allow_html=True)
+                    elif result:
+                        loser = t2 if result == t1 else t1
+                        st.markdown(f"<div style='font-size:11px;padding:3px 0;'><b>{result}</b> <span style='color:#6b6b80'>def. {loser}</span></div>", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"<div style='font-size:11px;padding:3px 0;color:#6b6b80'>{t1} vs {t2}</div>", unsafe_allow_html=True)
 
 # ══ TAB 2 — LEADERBOARD DETALLADO ══════════════════════════════════════
 with tab_lb:
