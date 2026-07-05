@@ -373,7 +373,7 @@ with tab_picks:
 # ══ TAB BRACKET ═══════════════════════════════════════════════════════════
 with tab_bracket:
     st.subheader("🏆 Bracket del Mundial 2026")
-    st.caption("Visualización completa del torneo — fase de grupos hasta la final.")
+    st.caption("Ronda de 16 → Cuartos → Semis → Final")
 
     def get_r(stage, sidx):
         key = f"{stage}_{sidx}"
@@ -382,63 +382,114 @@ with tab_bracket:
         known = KNOWN_RESULTS.get(stage, [])
         return known[sidx] if sidx < len(known) else None
 
-    def team_box(team, result, pts_stage):
-        flag = team.split(" ")[0] if team and team != "⏳ TBD" else "⏳"
-        name = " ".join(team.split(" ")[1:]) if team and team != "⏳ TBD" else "TBD"
-        won  = result == team if result else False
-        return flag, name, won
+    def match_card(t1, t2, result, date, width="160px"):
+        tbd = t1 == "⏳ TBD"
+        if tbd:
+            return f"""<div style="width:{width};border:1px solid #2e2e3e;border-radius:8px;overflow:hidden;font-size:11px;">
+              <div style="background:#0d0d0d;padding:3px 7px;color:#555;font-size:10px;">{date}</div>
+              <div style="padding:5px 7px;color:#555;">⏳ TBD</div>
+              <div style="border-top:1px solid #2e2e3e;padding:5px 7px;color:#555;">⏳ TBD</div>
+            </div>"""
+        w1 = result == t1 if result else False
+        w2 = result == t2 if result else False
+        s1 = "color:#00d97e;font-weight:700;" if w1 else ("color:#555;" if result else "")
+        s2 = "color:#00d97e;font-weight:700;" if w2 else ("color:#555;" if result else "")
+        bg1 = "background:#0d200d;" if w1 else ""
+        bg2 = "background:#0d200d;" if w2 else ""
+        return f"""<div style="width:{width};border:1px solid #2e2e3e;border-radius:8px;overflow:hidden;font-size:11px;">
+          <div style="background:#0d0d0d;padding:3px 7px;color:#555;font-size:10px;">{date}</div>
+          <div style="{bg1}padding:5px 7px;{s1}">{t1}</div>
+          <div style="border-top:1px solid #2e2e3e;{bg2}padding:5px 7px;{s2}">{t2}</div>
+        </div>"""
 
-    # Build bracket data from matches
-    bracket_stages = [
-        ("Ronda de 32",  MATCHES_DEF["Ronda de 32"],  "Ronda de 32"),
-        ("Ronda de 16",  MATCHES_DEF["Ronda de 16"],  "Ronda de 16"),
-        ("Cuartos de Final", MATCHES_DEF["Cuartos de Final"], "Cuartos de Final"),
-        ("Semifinales",  MATCHES_DEF["Semifinales"],  "Semifinales"),
-        ("Final",        MATCHES_DEF["Final"],        "Final"),
-    ]
+    # Get all match data
+    r16  = MATCHES_DEF["Ronda de 16"]
+    qf   = MATCHES_DEF["Cuartos de Final"]
+    sf   = MATCHES_DEF["Semifinales"]
+    tp   = MATCHES_DEF["Tercer Lugar"]
+    fin  = MATCHES_DEF["Final"]
 
-    for stage_name, matches, stage_key in bracket_stages:
-        results_list = [get_r(stage_key, i) for i in range(len(matches))]
-        cols_n = min(len(matches), 4)
-        st.markdown(f"##### {stage_name}")
-        cols = st.columns(cols_n)
-        for idx, (t1, t2, date, _) in enumerate(matches):
-            result = results_list[idx]
-            with cols[idx % cols_n]:
-                t1_won = result == t1 if result else False
-                t2_won = result == t2 if result else False
-                t1_style = "background:#1a3a1a;border-left:3px solid #00d97e;" if t1_won else ("background:#3a1a1a;border-left:3px solid #ff4d6d;" if (result and not t1_won) else "background:#1a1a24;")
-                t2_style = "background:#1a3a1a;border-left:3px solid #00d97e;" if t2_won else ("background:#3a1a1a;border-left:3px solid #ff4d6d;" if (result and not t2_won) else "background:#1a1a24;")
-                tbd = t1 == "⏳ TBD"
-                if tbd:
-                    st.markdown(f"""<div style="border:1px solid #2e2e3e;border-radius:8px;overflow:hidden;margin-bottom:8px;">
-                        <div style="background:#111;padding:4px 8px;font-size:10px;color:#6b6b80;">{date}</div>
-                        <div style="padding:6px 8px;color:#6b6b80;font-size:12px;">⏳ Por definir</div>
-                    </div>""", unsafe_allow_html=True)
-                else:
-                    st.markdown(f"""<div style="border:1px solid #2e2e3e;border-radius:8px;overflow:hidden;margin-bottom:8px;">
-                        <div style="background:#111;padding:4px 8px;font-size:10px;color:#6b6b80;">{date}</div>
-                        <div style="{t1_style};padding:6px 8px;font-size:12px;font-weight:{'700' if t1_won else '400'}">{t1}</div>
-                        <div style="border-top:1px solid #2e2e3e;{t2_style};padding:6px 8px;font-size:12px;font-weight:{'700' if t2_won else '400'}">{t2}</div>
-                    </div>""", unsafe_allow_html=True)
-        st.markdown("---")
+    r16r  = [get_r("Ronda de 16", i)   for i in range(len(r16))]
+    qfr   = [get_r("Cuartos de Final", i) for i in range(len(qf))]
+    sfr   = [get_r("Semifinales", i)   for i in range(len(sf))]
+    tpr   = [get_r("Tercer Lugar", 0)]
+    finr  = [get_r("Final", 0)]
 
-    # Group stage summary
-    with st.expander("📋 Resultados Fase de Grupos"):
+    # Build the bracket HTML — visual bracket layout
+    def col_html(matches_data, results, stage_label, card_w="155px"):
+        html = f"<div style='display:flex;flex-direction:column;gap:6px;'><div style='font-size:10px;font-weight:700;color:#F5C518;letter-spacing:1px;text-align:center;margin-bottom:4px;'>{stage_label}</div>"
+        for i,(t1,t2,date,_) in enumerate(matches_data):
+            r = results[i] if i < len(results) else None
+            html += match_card(t1, t2, r, date, card_w)
+        html += "</div>"
+        return html
+
+    # Left side: matches 0-3 of R16, QF 0-1, SF 0, Final
+    # Right side: matches 4-7 of R16, QF 2-3, SF 1, Final
+
+    left_r16_html  = col_html(r16[:4],  r16r[:4],  "Ronda de 16")
+    right_r16_html = col_html(r16[4:],  r16r[4:],  "Ronda de 16")
+    left_qf_html   = col_html(qf[:2],   qfr[:2],   "Cuartos",  "155px")
+    right_qf_html  = col_html(qf[2:],   qfr[2:],   "Cuartos",  "155px")
+    left_sf_html   = col_html(sf[:1],   sfr[:1],   "Semifinal", "155px")
+    right_sf_html  = col_html(sf[1:],   sfr[1:],   "Semifinal", "155px")
+    fin_html       = col_html(fin,       finr,      "🏆 FINAL",  "155px")
+    tp_html        = col_html(tp,        tpr,       "3er Lugar", "155px")
+
+    bracket_html = f"""
+    <div style="overflow-x:auto;padding:8px 0;">
+    <div style="display:flex;align-items:center;gap:8px;min-width:900px;">
+      <!-- Left R16 -->
+      <div style="display:flex;flex-direction:column;gap:28px;">
+        {left_r16_html}
+      </div>
+      <!-- Left QF -->
+      <div style="display:flex;flex-direction:column;gap:60px;margin-top:46px;">
+        {left_qf_html}
+      </div>
+      <!-- Left SF -->
+      <div style="display:flex;flex-direction:column;gap:0px;margin-top:120px;">
+        {left_sf_html}
+      </div>
+      <!-- Center: SF→Final→3rd -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:80px;">
+        {fin_html}
+        <div style="margin-top:8px;">
+          {tp_html}
+        </div>
+      </div>
+      <!-- Right SF -->
+      <div style="display:flex;flex-direction:column;margin-top:120px;">
+        {right_sf_html}
+      </div>
+      <!-- Right QF -->
+      <div style="display:flex;flex-direction:column;gap:60px;margin-top:46px;">
+        {right_qf_html}
+      </div>
+      <!-- Right R16 -->
+      <div style="display:flex;flex-direction:column;gap:28px;">
+        {right_r16_html}
+      </div>
+    </div>
+    </div>
+    """
+    st.markdown(bracket_html, unsafe_allow_html=True)
+
+    st.markdown("---")
+    with st.expander("📋 Ver resultados Fase de Grupos"):
         for gstage in ["Jornada 1", "Jornada 2", "Jornada 3"]:
             st.markdown(f"**{gstage}**")
-            gmatches = MATCHES_DEF[gstage]
-            cols = st.columns(4)
-            for idx, (t1, t2, date, _) in enumerate(gmatches):
+            gcols = st.columns(4)
+            for idx, (t1, t2, date, _) in enumerate(MATCHES_DEF[gstage]):
                 result = get_r(gstage, idx)
-                with cols[idx % 4]:
+                with gcols[idx % 4]:
                     if result == "Empate":
-                        st.markdown(f"<div style='font-size:11px;padding:3px 0;color:#6b6b80'>{t1} <b>=</b> {t2}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='font-size:11px;padding:3px 0;color:#888'>{t1} <b>=</b> {t2}</div>", unsafe_allow_html=True)
                     elif result:
                         loser = t2 if result == t1 else t1
-                        st.markdown(f"<div style='font-size:11px;padding:3px 0;'><b>{result}</b> <span style='color:#6b6b80'>def. {loser}</span></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='font-size:11px;padding:3px 0;'><b>{result}</b> <span style='color:#888'>vs {loser}</span></div>", unsafe_allow_html=True)
                     else:
-                        st.markdown(f"<div style='font-size:11px;padding:3px 0;color:#6b6b80'>{t1} vs {t2}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='font-size:11px;padding:3px 0;color:#888'>{t1} vs {t2}</div>", unsafe_allow_html=True)
 
 # ══ TAB 2 — LEADERBOARD DETALLADO ══════════════════════════════════════
 with tab_lb:
