@@ -38,6 +38,28 @@ def time_remaining():
     m, s   = divmod(rem, 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
 
+def round_is_locked(stage):
+    dl = st.session_state.round_deadlines.get(stage)
+    if not dl: return False
+    from datetime import datetime, timezone
+    try:
+        deadline = datetime.fromisoformat(dl)
+        return now_utc() >= deadline
+    except: return False
+
+def round_time_remaining(stage):
+    dl = st.session_state.round_deadlines.get(stage)
+    if not dl: return None
+    from datetime import datetime
+    try:
+        deadline = datetime.fromisoformat(dl)
+        delta = deadline - now_utc()
+        if delta.total_seconds() <= 0: return None
+        h, rem = divmod(int(delta.total_seconds()), 3600)
+        m, s   = divmod(rem, 60)
+        return f"{h:02d}:{m:02d}:{s:02d}"
+    except: return None
+
 # ── GitHub persistence ─────────────────────────────────────────────────
 def gh_load():
     try:
@@ -53,7 +75,7 @@ def gh_load():
         return {"users": {}, "results": {}, "_sha": ""}
 
 def gh_save():
-    data = {"users": st.session_state.all_users, "results": st.session_state.result_overrides}
+    data = {"users": st.session_state.all_users, "results": st.session_state.result_overrides, "deadlines": st.session_state.round_deadlines}
     sha  = st.session_state.get("_gh_sha", "")
     body = json.dumps({"message": "Auto-save", "content": base64.b64encode(
         json.dumps(data, ensure_ascii=False, indent=2).encode()).decode(),
@@ -185,11 +207,24 @@ if "data_loaded" not in st.session_state:
     st.session_state.all_users        = d.get("users", {})
     st.session_state.result_overrides = d.get("results", {})
     st.session_state._gh_sha          = d.get("_sha", "")
+    # Restore deadlines, keeping defaults for any missing keys
+    saved_dl = d.get("deadlines", {})
+    for k,v in saved_dl.items():
+        st.session_state.round_deadlines[k] = v
     st.session_state.data_loaded      = True
 
 if "admin_unlocked" not in st.session_state: st.session_state.admin_unlocked = False
 if "user_name"      not in st.session_state: st.session_state.user_name      = None
 if "picks"          not in st.session_state: st.session_state.picks          = [None]*TOTAL
+# Per-round deadlines (UTC timestamps as ISO strings, set by admin)
+if "round_deadlines" not in st.session_state:
+    st.session_state.round_deadlines = {
+        "Ronda de 16":     "2026-07-06T03:00:00+00:00",  # Jul 5 9pm CR
+        "Cuartos de Final": None,
+        "Semifinales":      None,
+        "Tercer Lugar":     None,
+        "Final":            None,
+    }
 
 def recalc_all():
     sl = {}
@@ -313,8 +348,21 @@ with tab_picks:
         is_past=stage not in ["Ronda de 16","Cuartos de Final","Semifinales","Tercer Lugar","Final"]
         is_future=stage in ["Cuartos de Final","Semifinales","Tercer Lugar","Final"]
         all_tbd=all(m[0]=="⏳ TBD" for m in matches)
-        icon = "🔒" if is_past else ("⏳" if all_tbd else "🟢")
-        with st.expander(f"{icon} {stage}",expanded=(not is_past and not all_tbd)):
+        r_locked = round_is_locked(stage)
+        r_remaining = round_time_remaining(stage)
+        if is_past: icon = "🔒"
+        elif all_tbd: icon = "⏳"
+        elif r_locked: icon = "🔒"
+        elif r_remaining: icon = "🟢"
+        else: icon = "🟢"
+        # Build expander label with countdown
+        if r_remaining and not r_locked and not is_past and not all_tbd:
+            exp_label = f"{icon} {stage}  ⏳ {r_remaining}"
+        elif r_locked and not is_past:
+            exp_label = f"🔒 {stage}  (cerrado)"
+        else:
+            exp_label = f"{icon} {stage}"
+        with st.expander(exp_label, expanded=(not is_past and not all_tbd and not r_locked)):
             for i,(stg,m) in enumerate(ALL_MATCHES):
                 if stg!=stage: continue
                 t1,t2,date,_=m
@@ -707,6 +755,43 @@ with tab_admin:
                         gh_save(); st.success("✅ Marcado como enviado.")
 
         with adm3:
+            st.subheader("⏰ Deadlines por Ronda")
+            st.caption("Pon la fecha y hora límite para cada ronda en hora de Costa Rica (UTC-6). Los picks se bloquean automáticamente.")
+
+            future_rounds = ["Ronda de 16","Cuartos de Final","Semifinales","Tercer Lugar","Final"]
+            for rnd in future_rounds:
+                current = st.session_state.round_deadlines.get(rnd)
+                rem = round_time_remaining(rnd)
+                locked = round_is_locked(rnd)
+                status = "🔒 Cerrado" if locked else (f"⏳ {rem}" if rem else "⚪ Sin deadline")
+                st.markdown(f"**{rnd}** — {status}")
+                col_d, col_t, col_btn = st.columns([2,2,1])
+                with col_d:
+                    date_val = st.date_input(f"Fecha", key=f"dl_date_{rnd}", label_visibility="collapsed")
+                with col_t:
+                    time_val = st.time_input(f"Hora CR", key=f"dl_time_{rnd}", label_visibility="collapsed", step=1800)
+                with col_btn:
+                    if st.button("✅ Set", key=f"dl_set_{rnd}"):
+                        from datetime import datetime, timezone, timedelta
+                        CR_TZ = timezone(timedelta(hours=-6))
+                        naive = datetime.combine(date_val, time_val)
+                        cr_dt = naive.replace(tzinfo=CR_TZ)
+                        st.session_state.round_deadlines[rnd] = cr_dt.isoformat()
+                        gh_save()
+                        st.success(f"✅ Deadline de {rnd} guardado.")
+                        st.rerun()
+                if current:
+                    if st.button(f"🗑️ Quitar deadline", key=f"dl_clear_{rnd}"):
+                        st.session_state.round_deadlines[rnd] = None
+                        gh_save(); st.rerun()
+                st.divider()
+
+        adm4, = st.tabs(["➕ Usuarios"]) if False else [None]
+        with st.container():
+            pass
+
+        # Reuse adm3 variable name below as adm4
+        with adm3:
             st.subheader("➕ Agregar usuario")
             new_name=st.text_input("Nombre",max_chars=30,key="admin_new_user")
             if st.button("Crear",key="admin_create",type="primary"):
@@ -715,7 +800,7 @@ with tab_admin:
                 elif n in st.session_state.all_users: st.warning(f"{n} ya existe.")
                 else:
                     st.session_state.all_users[n]={"picks":[None]*TOTAL,"points":0,"submitted":False}
-                    gh_save(); st.success(f"✅ Usuario **{n}** creado y guardado en GitHub."); st.rerun()
+                    gh_save(); st.success(f"✅ Usuario **{n}** creado."); st.rerun()
             st.markdown("---")
             st.subheader("👥 Todos los usuarios")
             users_s=sorted(st.session_state.all_users.items(),key=lambda x:x[1].get("points",0),reverse=True)
