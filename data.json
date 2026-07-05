@@ -97,11 +97,28 @@
         "🇵🇹 Portugal",
         "🇺🇸 USA",
         "🇦🇷 Argentina",
-        "🇨🇴 Colombia"
+        "🇨🇴 Colombia",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
       ],
-      "points": 138,
+      "points": 143,
       "submitted": true
     }
   },
-  "results": {}
+  "results": {
+    "Ronda de 16_0": "🇲🇦 Marruecos",
+    "Ronda de 16_1": "🇫🇷 Francia",
+    "Ronda de 16_2": null,
+    "Ronda de 16_3": null,
+    "Ronda de 16_4": null,
+    "Ronda de 16_5": null,
+    "Ronda de 16_6": null,
+    "Ronda de 16_7": null
+  }
 }
