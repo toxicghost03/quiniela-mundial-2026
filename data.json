@@ -217,7 +217,7 @@
         null,
         null
       ],
-      "points": 129,
+      "points": 139,
       "submitted": true
     },
     "Tía Tete": {
@@ -327,7 +327,7 @@
         null,
         null
       ],
-      "points": 10,
+      "points": 25,
       "submitted": true
     },
     "Gabo": {
@@ -437,7 +437,7 @@
         null,
         null
       ],
-      "points": 5,
+      "points": 15,
       "submitted": true
     },
     "Tita": {
@@ -664,9 +664,9 @@
   "results": {
     "Ronda de 16_0": "🇲🇦 Marruecos",
     "Ronda de 16_1": "🇫🇷 Francia",
-    "Ronda de 16_2": null,
-    "Ronda de 16_3": null,
-    "Ronda de 16_4": null,
+    "Ronda de 16_2": "🇳🇴 Noruega",
+    "Ronda de 16_3": "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra",
+    "Ronda de 16_4": "🇪🇸 España",
     "Ronda de 16_5": null,
     "Ronda de 16_6": null,
     "Ronda de 16_7": null
