@@ -107,7 +107,7 @@
         null,
         null
       ],
-      "points": 143,
+      "points": 148,
       "submitted": true
     },
     "Fer": {
@@ -327,7 +327,7 @@
         null,
         null
       ],
-      "points": 25,
+      "points": 35,
       "submitted": true
     },
     "Gabo": {
@@ -437,7 +437,7 @@
         null,
         null
       ],
-      "points": 15,
+      "points": 20,
       "submitted": true
     },
     "Tita": {
@@ -667,8 +667,8 @@
     "Ronda de 16_2": "🇳🇴 Noruega",
     "Ronda de 16_3": "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra",
     "Ronda de 16_4": "🇪🇸 España",
-    "Ronda de 16_5": null,
-    "Ronda de 16_6": null,
+    "Ronda de 16_5": "🇧🇪 Bélgica",
+    "Ronda de 16_6": "🇦🇷 Argentina",
     "Ronda de 16_7": null
   },
   "deadlines": {
